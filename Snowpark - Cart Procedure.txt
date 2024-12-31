@@ -1,0 +1,48 @@
+CREATE OR REPLACE PROCEDURE SHOPMART_DB.PUBLIC.RUN_CART_TRANSFORM()
+RETURNS VARCHAR(16777216)
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('snowflake-snowpark-python')
+HANDLER = 'main'
+EXECUTE AS OWNER
+AS '# The Snowpark package is required for Python Worksheets. 
+# You can add more packages by selecting them using the Packages control and then importing them.
+
+import snowflake.snowpark as snowpark
+from snowflake.snowpark.functions import col, flatten
+
+def main(session: snowpark.Session): 
+    try:        
+        # df = session.table(''SHOPMART_DB.STAGE_LAYER.CART_STAGE'')
+        df = session.table(''SHOPMART_DB.PUBLIC.CART_STREAM'')
+        
+        cart_df = df.select(
+            flatten(col(''cart_data''))
+        )
+    
+        flattened_df = cart_df.select(
+            col(''VALUE'')[''id''].alias(''cart_id''),
+            col(''VALUE'')[''userId''].alias(''user_id''),
+            col(''VALUE'')[''products''].alias(''products''),
+            col(''VALUE'')[''date''].alias(''created_datetime'')
+        ).join_table_function(
+            ''FLATTEN'',
+            col(''products'')
+        )
+        
+        final_cart_df = flattened_df.select(
+            col(''cart_id''),
+            col(''user_id''),
+            col(''VALUE'')[''productId''].alias(''product_id''),
+            col(''VALUE'')[''quantity''].alias(''product_quantity''),
+            col(''created_datetime'')
+        )
+        
+        final_cart_df.write.mode("overwrite").save_as_table(''SHOPMART_DB.PROD_LAYER.FACT_CART'')
+
+        session.sql(''TRUNCATE SHOPMART_DB.STAGE_LAYER.CART_STAGE'').collect()
+
+        return "Cart data transformed"
+    
+    except Exception as e:
+        return e';

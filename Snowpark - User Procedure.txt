@@ -1,0 +1,57 @@
+CREATE OR REPLACE PROCEDURE SHOPMART_DB.PUBLIC.RUN_USER_TRANSFORM()
+RETURNS VARCHAR(16777216)
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('snowflake-snowpark-python')
+HANDLER = 'main'
+EXECUTE AS OWNER
+AS '# The Snowpark package is required for Python Worksheets. 
+# You can add more packages by selecting them using the Packages control and then importing them.
+
+import snowflake.snowpark as snowpark
+from snowflake.snowpark.functions import col, flatten
+
+def main(session: snowpark.Session):
+    try:
+    
+        # df = session.table(''SHOPMART_DB.STAGE_LAYER.USER_STAGE'')
+        df = session.table(''SHOPMART_DB.PUBLIC.USER_STREAM'')
+    
+        user_df = df.select(
+        flatten(col(''user_data''))
+        ).cache_result()
+    
+    
+        # user basic info
+        user_info_df = user_df.select(
+        col(''VALUE'')[''id''].alias(''user_id''),
+        col(''VALUE'')[''email''].alias(''email''),
+        col(''VALUE'')[''name''][''firstname''].alias(''firstname''),
+        col(''VALUE'')[''name''][''lastname''].alias(''lastname''),
+        col(''VALUE'')[''phone''].alias(''phone''),
+        col(''VALUE'')[''id''].alias(''address_id'')
+        )
+    
+        # user_address
+        user_address_df = user_df.select(
+        col(''VALUE'')[''id''].alias(''address_id''),
+        col(''VALUE'')[''address''][''geolocation''][''lat''].alias(''latitude''),
+        col(''VALUE'')[''address''][''geolocation''][''long''].alias(''longitude''),
+        col(''VALUE'')[''address''][''city''].alias(''city''),
+        col(''VALUE'')[''address''][''street''].alias(''street''),
+        col(''VALUE'')[''address''][''zipcode''].alias(''zipcode'')
+        )
+
+        user_info_df.write.mode("overwrite").save_as_table("SHOPMART_DB.PROD_LAYER.DIM_USER")
+        user_address_df.write.mode("overwrite").save_as_table("SHOPMART_DB.PROD_LAYER.DIM_ADDRESS")
+        
+        #Truncate stage table
+        session.sql("TRUNCATE TABLE SHOPMART_DB.STAGE_LAYER.USER_STAGE").collect()
+
+        return "User data transformed"
+    
+    
+    except Exception as e:
+        return e
+
+';

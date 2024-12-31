@@ -1,0 +1,39 @@
+CREATE OR REPLACE PROCEDURE SHOPMART_DB.PUBLIC.RUN_PRODUCT_TRANSFORM()
+RETURNS VARCHAR(16777216)
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('snowflake-snowpark-python')
+HANDLER = 'main'
+EXECUTE AS OWNER
+AS '# The Snowpark package is required for Python Worksheets. 
+# You can add more packages by selecting them using the Packages control and then importing them.
+
+import snowflake.snowpark as snowpark
+from snowflake.snowpark.functions import col, flatten
+
+def main(session: snowpark.Session): 
+    try:
+        # df = session.table(''SHOPMART_DB.STAGE_LAYER.PRODUCT_STAGE'')
+        df = session.table(''SHOPMART_DB.PUBLIC.PRODUCT_STREAM'')
+        product_df = df.select(
+            flatten(col(''PRODUCT_DATA''))
+            )
+        
+        product_df = product_df.select(
+            col(''VALUE'')[''id''].alias(''product_id''),
+            col(''VALUE'')[''title''].alias(''title''),
+            col(''VALUE'')[''description''].alias(''description''),
+            col(''VALUE'')[''price''].alias(''price''),
+            col(''VALUE'')[''rating''][''rate''].alias(''rating'')
+            )
+        
+        product_df.write.mode("overwrite").save_as_table("SHOPMART_DB.PROD_LAYER.DIM_PRODUCTS")
+        
+        #Truncate stage table
+        session.sql("TRUNCATE TABLE SHOPMART_DB.STAGE_LAYER.PRODUCT_STAGE").collect()
+
+        return "Product data transfomed"
+        
+        
+    except Exception as e:
+        return e';
